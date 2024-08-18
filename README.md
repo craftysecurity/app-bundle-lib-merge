@@ -1,4 +1,4 @@
-A simple bash script to pull native libraries stored uncompressed outside base.apk ./~~ZVBBiFjlBPVhkOxDgv7eog==/com.example.app-ws94ff45_S==/lib/arm64/lib.so in app bundles (android.bundle.enableUncompressedNativeLibs=true) and repack them into base.apk /lib/arm64.
+A simple bash script to pull native libraries stored uncompressed outside base.apk ./~~348f9hcch93H4CF==/com.example.app-ws94ff45_S==/lib/arm64/lib.so in app bundles (android.bundle.enableUncompressedNativeLibs=true) and repack them into base.apk /lib/arm64.
 
 ## Usage
 
@@ -10,9 +10,9 @@ cd app-bundle-lib-merge
 ```
 
 Ensure you have ADB installed and accessible in your system's PATH.
-'''
+```bash
 adb devices
-'''
+```
 
 Run the script by specifying the package name of the app you want to extract:
 
