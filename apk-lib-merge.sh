@@ -42,70 +42,55 @@ if [ -z "$DEVICE" ]; then
     fi
 fi
 
-# Locate the APK path using adb
-echo "Locating APK path for package: $PACKAGE_NAME"
-APK_PATH=$(adb $DEVICE shell pm path $PACKAGE_NAME | grep base | cut -d: -f2)
+# Locate APK path and any split APKs
+echo "Locating APK paths for package: $PACKAGE_NAME"
+APK_PATHS=$(adb $DEVICE shell pm path $PACKAGE_NAME | cut -d: -f2)
 
-if [ -z "$APK_PATH" ]; then
-    echo "Package not found or APK path could not be located."
+if [ -z "$APK_PATHS" ]; then
+    echo "Package not found or APK paths could not be located."
     exit 1
 fi
 
-echo "APK located at: $APK_PATH"
+echo "APK paths located:"
+echo "$APK_PATHS"
 
-# Pull the APK file
-echo "Pulling APK..."
-adb $DEVICE pull "$APK_PATH" ./base.apk
+# Pull all APKs (base and split APKs)
+for APK_PATH in $APK_PATHS; do
+    APK_NAME=$(basename "$APK_PATH")
+    echo "Pulling $APK_NAME..."
+    adb $DEVICE pull "$APK_PATH" "./$APK_NAME"
+done
 
+# Extract and search for libraries within pulled APKs
+for APK_FILE in ./*.apk; do
+    echo "Processing $APK_FILE..."
+    unzip -o "$APK_FILE" -d "extracted_$(basename $APK_FILE .apk)" >/dev/null
+done
 
-APP_BASE_DIR=$(dirname "$APK_PATH")
-
-# Check if the APK is part of an app bundle and pull libraries if found
-echo "Checking if the APK is part of an app bundle..."
-LIB_DIRS=$(adb $DEVICE shell "find $APP_BASE_DIR/lib/ -type f -name '*.so'" 2>/dev/null)
+# Search for .so files in extracted directories
+echo "Searching for ARM64 libraries..."
+LIB_DIRS=$(find extracted_* -type f -name '*.so')
 
 if [ -n "$LIB_DIRS" ]; then
-    echo "App bundle detected. Pulling libraries..."
-    for LIB_DIR in $LIB_DIRS; do
-        TARGET_DIR="./base/lib/$(dirname "$LIB_DIR" | sed 's|.*lib/||')"
+    echo "Found ARM64 libraries. Organizing..."
+    for LIB in $LIB_DIRS; do
+        TARGET_DIR="./libs/$(dirname "$LIB" | sed 's|extracted_[^/]*||')"
         mkdir -p "$TARGET_DIR"
-        adb $DEVICE pull "$LIB_DIR" "$TARGET_DIR/"
+        cp "$LIB" "$TARGET_DIR/"
     done
-    
 
-    echo "Repacking APK with libraries..."
-    cd base
-    zip -r ../base.apk ./
-    cd ..
-    
+    echo "Repacking APKs with libraries..."
+    for APK_FILE in ./*.apk; do
+        APK_NAME=$(basename "$APK_FILE" .apk)
+        cd "extracted_$APK_NAME"
+        zip -r "../$APK_NAME-repacked.apk" ./ >/dev/null
+        cd ..
+    done
 
-    rm -rf base/lib
+    echo "Cleaning up extracted files..."
+    rm -rf extracted_*
 else
-    echo "No external libraries found, or APK is not part of an app bundle."
+    echo "No ARM64 libraries found."
 fi
 
-# Additional function to search /data/data/com.exampleapp.android/ for .so files
-echo "Searching /data/data/$PACKAGE_NAME/ for .so files..."
-DATA_LIBS=$(adb $DEVICE shell "find /data/data/$PACKAGE_NAME/ -type f -name '*.so'" 2>/dev/null)
-
-if [ -n "$DATA_LIBS" ]; then
-    echo "Found .so files in /data/data/$PACKAGE_NAME/. Pulling and repacking..."
-    for LIB in $DATA_LIBS; do
-        TARGET_DIR="./data-dir-libs/$(dirname "$LIB" | sed 's|/data/data/||')"
-        mkdir -p "$TARGET_DIR"
-        adb $DEVICE pull "$LIB" "$TARGET_DIR/"
-    done
-    
-    # Repackage the APK with the new libraries
-    echo "Repacking APK with data-dir libraries..."
-    cd data-dir-libs
-    zip -r ../base.apk ./
-    cd ..
-    
-
-    rm -rf data-dir-libs
-else
-    echo "No .so files found in /data/data/$PACKAGE_NAME/."
-fi
-
-echo "APK pull and repacking complete. Check the 'base.apk' file for the integrated content."
+echo "APK extraction and repacking complete. Check for *-repacked.apk files."
